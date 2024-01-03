@@ -1,0 +1,7 @@
+{
+    "depth":16, 
+    "feaure_in":8, 
+    "dim" : 256, 
+    "num_patches":64, 
+    "dropout":0.1
+}
