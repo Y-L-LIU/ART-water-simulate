@@ -10,14 +10,14 @@ from openrl.envs.common import make
 from src.mlpmixer import MLPMixer
 import json
 
-def load_data(time_steps):
+def load_data(time_steps,excel_file = 'data/train.xlsx'):
     import pandas as pd
     excel_file = 'data/train.xlsx'
     data1 = pd.read_excel(excel_file, sheet_name='Sheet1')
     data1['date'] = pd.to_datetime(data1['date'])
     data2 = pd.read_excel(excel_file, sheet_name='Sheet2')
     data2['date'] = pd.to_datetime(data2['date'])
-    merged_data = pd.merge_asof(data1, data2, on='date', tolerance=pd.Timedelta('1H'))
+    merged_data = pd.merge_asof(data2, data1, on='date', tolerance=pd.Timedelta('1H'))
     merged_data.keys()
     selected_columns = ['pri_supp_t','pri_back_t', 'pri_flow', 'sec_supp_t', 'sec_back_t', 'sec_flow', 'outdoor', 'irradiance']
     data_subset = merged_data[selected_columns]
@@ -35,18 +35,27 @@ def yield_data(data):
     for x in data:
         yield x
 
+def load_test_data(time_steps):
+    df1, df2 = load_data(time_steps, 'data/train.xlsx'), load_data(time_steps, 'data/test.xlsx')
+    df = np.concatenate([df1[0][-64:], df2[0]], axis=0)
+    tmp = np.concatenate([df1[1][-64:], df2[1]], axis=0)
+    return df, tmp
+
 def load_config(path):
     return json.load(path, 'r')
 
 class IdentityEnv(gym.Env):
     spec = EnvSpec("IdentityEnv")
-    def __init__(self,time_steps,path_to_model):
+    def __init__(self,time_steps,path_to_model,is_test=False):
         self.dim = 2
         self.observation_space = spaces.Discrete(1)
         self.action_space = spaces.Discrete(self.dim)
         self.time_steps = time_steps
         self.current_step = 0
-        datas, tmp = load_data(time_steps)
+        if not is_test:
+            datas, tmp = load_data(time_steps)
+        else:
+            datas, tmp = load_test_data(time_steps)
         self.ep_length = len(datas)
         self.yield_data = yield_data(datas)
         self.yield_predict = yield_data(tmp)
