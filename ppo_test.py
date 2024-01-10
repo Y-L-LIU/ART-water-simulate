@@ -33,7 +33,8 @@ def test(env_1):
     # action_std = 0.1            # set same std for action distribution which was used while saving
 
     has_continuous_action_space = True
-    max_ep_len = 1000           # max timesteps in one episode
+    max_ep_len = env_1.ep_length           # max timesteps in one episode
+    print(max_ep_len)
     action_std = 0.1            # set same std for action distribution which was used while saving
 
     render = True              # render environment on screen
@@ -82,17 +83,14 @@ def test(env_1):
     for ep in range(1, total_test_episodes+1):
         ep_reward = 0
         state = env.reset()
-
+        print(state.shape)
         for t in range(1, max_ep_len+1):
             s = []
             tem_before = state[-5]
             action = ppo_agent.select_action(state)
-            
-            state_pred = state.reshape((64,8))
-            state_pred[-1,3] = state_pred[-1,3]+action
-            tem_in = env.get_tem(state_pred)
-            s.append(tem_in)
-            s.append(float(tem_before) + float(action))
+            s.append(tem_before + action[0])
+            s.append(action)
+            s.append(state[-5])
             test_result.append(s)
             state, reward, done, _ = env.step(action)
             
@@ -107,16 +105,25 @@ def test(env_1):
 
 
         # 文件名
-        file_name = 'output.csv'
+        file_name = 'output.xlsx'
         # print(test_result[0])
         # 将二维数组写入 CSV 文件
-        with open(file_name, 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile)
-            for row in test_result:
-                csv_writer.writerow(row)
-
-        print(f"已将二维数组写入 {file_name}")
-
+        import pandas as pd
+        # data_col real
+        data_col = pd.read_excel('./data/test.xlsx')['date']
+        #data_col_1h
+        data1 = pd.read_excel('./data/test.xlsx', sheet_name='Sheet1')
+        data1['date'] = pd.to_datetime(data1['date'])
+        data2 = pd.read_excel('./data/test.xlsx', sheet_name='Sheet2')
+        data2['date'] = pd.to_datetime(data2['date'])
+        merged_data = pd.merge_asof(data2, data1, on='date', tolerance=pd.Timedelta('1H'))
+        data_col_1h = merged_data['date']
+        out = pd.DataFrame(test_result)
+        out['date'] = data_col_1h
+        # merge back
+        df_new = pd.merge_asof(data_col, out, on='date', tolerance=pd.Timedelta('1H'))
+        df_new.to_excel(file_name)
+        df_new.to_csv('output.csv')
         # clear buffer
         ppo_agent.buffer.clear()
 

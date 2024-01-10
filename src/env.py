@@ -35,11 +35,31 @@ def yield_data(data):
     for x in data:
         yield x
 
+def get_seq(excel_file):
+    import pandas as pd
+    data1 = pd.read_excel(excel_file, sheet_name='Sheet1')
+    data1['date'] = pd.to_datetime(data1['date'])
+    data2 = pd.read_excel(excel_file, sheet_name='Sheet2')
+    data2['date'] = pd.to_datetime(data2['date'])
+    merged_data = pd.merge_asof(data2, data1, on='date', tolerance=pd.Timedelta('1H'))
+    merged_data.keys()
+    selected_columns = ['pri_supp_t','pri_back_t', 'pri_flow', 'sec_supp_t', 'sec_back_t', 'sec_flow', 'outdoor', 'irradiance']
+    data_subset = merged_data[selected_columns]
+    data_subset.dropna(inplace=True)
+    X = data_subset.values
+    return X
+
 def load_test_data(time_steps):
-    df1, df2 = load_data(time_steps, 'data/train.xlsx'), load_data(time_steps, 'data/test.xlsx')
-    df = np.concatenate([df1[0][-64:], df2[0]], axis=0)
-    tmp = np.concatenate([df1[1][-64:], df2[1]], axis=0)
-    return df, tmp
+    X1, X2 = get_seq('data/train.xlsx'), get_seq('data/test.xlsx')
+    print(X1.shape, X2.shape)
+    X = np.concatenate([X1[-64:], X2], axis=0)
+    X_sequence = []
+    tmp = []
+    for i in range(len(X) - time_steps):
+        tmp.append(X[i:i+time_steps])
+        X_sequence.append((np.concatenate(X[i:i+time_steps])))
+    X_sequence = np.array(X_sequence, dtype=np.float32)
+    return X_sequence, np.array(tmp, dtype=np.float32 )
 
 def load_config(path):
     return json.load(path, 'r')
@@ -52,6 +72,7 @@ class IdentityEnv(gym.Env):
         self.action_space = spaces.Discrete(self.dim)
         self.time_steps = time_steps
         self.current_step = 0
+        self.is_test = is_test
         if not is_test:
             datas, tmp = load_data(time_steps)
         else:
@@ -87,7 +108,10 @@ class IdentityEnv(gym.Env):
         if seed is not None:
             self.seed(seed)
         self.current_step = 0
-        datas, tmp = load_data(self.time_steps)
+        if not self.is_test:
+            datas, tmp = load_data(self.time_steps)
+        else:
+            datas, tmp = load_test_data(self.time_steps)
         self.yield_data = yield_data(datas)
         self.yield_predict = yield_data(tmp)
         return next(self.yield_data)
@@ -100,7 +124,10 @@ class IdentityEnv(gym.Env):
         return float(predicted)
 
     def step(self, action) :
-        state = next(self.yield_data)
+        try:
+            state = next(self.yield_data)
+        except:
+            state = None
         state_pred = next(self.yield_predict)
         tem_origin = state_pred[-1,3]
         # print(state_pred[-1,3])
@@ -115,7 +142,6 @@ class IdentityEnv(gym.Env):
                 reward-=0.5
         else:
             reward-=1
-        # print(state[-1,3],tem_origin,tem_in)
         self.current_step += 1
         done = self.current_step >= self.ep_length
         return state, reward, done, {}
